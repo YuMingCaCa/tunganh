@@ -26,8 +26,10 @@
         ::-webkit-scrollbar-thumb:hover { background: #64748b; }
         .modal { backdrop-filter: blur(5px); }
         /* Style cho date picker */
-        input[type="date"]::-webkit-calendar-picker-indicator {
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="month"]::-webkit-calendar-picker-indicator {
             filter: invert(0.8);
+            cursor: pointer;
         }
     </style>
 </head>
@@ -39,7 +41,7 @@
             <h2 class="text-2xl font-bold text-white mb-4">Chào mừng!</h2>
             <p class="text-slate-300 mb-2">Để bắt đầu, hãy đặt tên cho cửa hàng của bạn.</p>
             <p class="text-slate-400 text-sm mb-6">Nếu bạn đã có cửa hàng, chỉ cần nhập lại đúng tên đó để truy cập.</p>
-            <input type="text" id="store-id-input" placeholder="ví dụ: cua-hang-heo-dat-a-tuan" class="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+            <input type="text" id="store-id-input" placeholder="ví dụ: Cua Hang Heo Dat A Tuan" class="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
             <button id="use-store-id-btn" class="mt-4 w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300">Truy Cập / Tạo Mới</button>
         </div>
     </div>
@@ -128,10 +130,10 @@
             <!-- Main Content (hidden until loaded) -->
             <main id="main-content" class="hidden">
                 <!-- Bảng điều khiển thống kê -->
-                 <div class="flex justify-end mb-4">
-                    <select id="stats-filter" class="bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-                        <option value="all">Thống kê Toàn thời gian</option>
-                    </select>
+                <div class="flex justify-end items-center gap-4 mb-4">
+                    <label for="stats-month-picker" class="text-sm text-slate-400 whitespace-nowrap">Thống kê tháng:</label>
+                    <input type="month" id="stats-month-picker" class="bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                    <button id="stats-all-time-btn" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Xem Toàn Thời Gian</button>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p class="text-lg font-medium text-slate-400">Tổng Doanh thu</p><h3 id="stats-revenue" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
@@ -374,6 +376,7 @@
             let businessConfig = { fixedCost: 0, profitMargin: 20 };
             let unsubscribeProducts, unsubscribeInventory, unsubscribeSales, unsubscribeConfig;
             let salesChart = null;
+            let statsFilterValue = 'all'; // Biến trạng thái cho bộ lọc thống kê
 
             const loader = document.getElementById('loader');
             const mainContent = document.getElementById('main-content');
@@ -396,11 +399,10 @@
             }
 
             function updateStats() {
-                const filter = document.getElementById('stats-filter').value;
-                const now = new Date();
+                const filter = statsFilterValue; // Sử dụng biến trạng thái
                 let filteredSales = sales;
 
-                if (filter !== 'all') {
+                if (filter !== 'all' && filter) {
                     const [year, month] = filter.split('-').map(Number);
                     const startDate = new Date(year, month - 1, 1);
                     const endDate = new Date(year, month, 0);
@@ -445,7 +447,6 @@
                 renderProductSelects();
                 renderInventoryDetails();
                 filterAndRenderReports(); 
-                updateStatsFilterOptions();
                 updateStats();
                 updateSaleFormAvailability();
             }
@@ -620,7 +621,7 @@
                 let estimatedNetProfit = grossProfit;
                 const netProfitLabel = document.getElementById('net-profit-label');
                 
-                if (filter !== 'all') {
+                if (filter !== 'all' && filter) {
                     estimatedNetProfit -= (businessConfig.fixedCost || 0);
                     netProfitLabel.textContent = 'Lợi nhuận Ròng (Tháng)';
                 } else {
@@ -973,7 +974,6 @@
             }
 
             document.getElementById('sale-product-select').addEventListener('change', updateSaleFormAvailability);
-            // document.getElementById('sale-quantity').addEventListener('input', calculateSuggestedPrice); // No longer needed for average cost
 
             function initializeTabs() {
                 const tabsContainer = document.getElementById('main-tabs');
@@ -999,7 +999,6 @@
 
                     const tabId = clickedBtn.dataset.tab;
 
-                    // NEW: Reset dates when switching to relevant tabs
                     if (tabId === 'sales' || tabId === 'inventory') {
                         setDefaultDates();
                     }
@@ -1181,27 +1180,6 @@
             // Nút hủy sửa lô hàng
             document.getElementById('cancel-edit-inventory-btn').addEventListener('click', () => editInventoryModal.classList.add('hidden'));
 
-            function updateStatsFilterOptions() {
-                const statsFilter = document.getElementById('stats-filter');
-                const currentVal = statsFilter.value;
-                // Clear existing month options but keep "all"
-                statsFilter.innerHTML = '<option value="all">Thống kê Toàn thời gian</option>';
-
-                const salesMonths = [...new Set(sales.map(sale => {
-                    const date = sale.saleDate.toDate();
-                    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                }))].sort().reverse();
-
-                salesMonths.forEach(monthYear => {
-                    const [year, month] = monthYear.split('-');
-                    const option = document.createElement('option');
-                    option.value = monthYear;
-                    option.textContent = `Thống kê Tháng ${month}/${year}`;
-                    statsFilter.appendChild(option);
-                });
-                statsFilter.value = currentVal; // Restore selection if possible
-            }
-
             function exportReport() {
                 const startDateInput = document.getElementById('report-start-date').value;
                 const endDateInput = document.getElementById('report-end-date').value;
@@ -1273,7 +1251,29 @@
                     initializeTabs();
                     initializeReportFilters();
                     
-                    document.getElementById('stats-filter').addEventListener('change', updateStats);
+                    // == [CẬP NHẬT] Thiết lập bộ lọc tháng mới ==
+                    const monthPicker = document.getElementById('stats-month-picker');
+                    const allTimeBtn = document.getElementById('stats-all-time-btn');
+
+                    // Đặt tháng hiện tại làm giá trị mặc định
+                    const now = new Date();
+                    const currentMonthISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                    monthPicker.value = currentMonthISO;
+                    statsFilterValue = currentMonthISO; // Đặt trạng thái lọc ban đầu
+
+                    // Thêm sự kiện cho bộ chọn tháng
+                    monthPicker.addEventListener('change', (e) => {
+                        statsFilterValue = e.target.value;
+                        updateStats();
+                    });
+
+                    // Thêm sự kiện cho nút "Xem Toàn Thời Gian"
+                    allTimeBtn.addEventListener('click', () => {
+                        statsFilterValue = 'all';
+                        monthPicker.value = ''; // Xóa giá trị trong ô để không gây nhầm lẫn
+                        updateStats();
+                    });
+
 
                     // Lắng nghe thay đổi của config
                     const configRef = doc(db, `stores/${storeId}/config/business`);
