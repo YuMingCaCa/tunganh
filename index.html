@@ -105,8 +105,8 @@
     <div class="min-h-screen p-4 sm:p-6 lg:p-8">
         <div class="max-w-7xl mx-auto">
             <header class="mb-8">
-                <h1 class="text-4xl font-bold text-white">Trình Quản lý Cửa hàng Lợn đất Tùng Anh</h1>
-                
+                <h1 class="text-4xl font-bold text-white">Trình Quản lý Cửa hàng Lợn đất</h1>
+                <p class="text-slate-400 mt-2">Phiên bản đơn giản, chạy với 1 file HTML duy nhất.</p>
                 <div id="store-id-display-container" class="mt-4 flex items-center bg-slate-800/50 text-slate-300 text-xs p-2 rounded-lg max-w-max hidden">
                     <i data-lucide="store" class="w-4 h-4 mr-2 text-cyan-400"></i>
                     <span class="mr-1">Mã Cửa Hàng:</span>
@@ -128,10 +128,15 @@
             <!-- Main Content (hidden until loaded) -->
             <main id="main-content" class="hidden">
                 <!-- Bảng điều khiển thống kê -->
+                 <div class="flex justify-end mb-4">
+                    <select id="stats-filter" class="bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                        <option value="all">Thống kê Toàn thời gian</option>
+                    </select>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p class="text-lg font-medium text-slate-400">Tổng Doanh thu</p><h3 id="stats-revenue" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
                     <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p class="text-lg font-medium text-slate-400">Lợi nhuận Gộp</p><h3 id="stats-profit" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
-                    <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p class="text-lg font-medium text-slate-400">Lợi nhuận Ròng (Ước tính)</p><h3 id="stats-net-profit" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
+                    <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p id="net-profit-label" class="text-lg font-medium text-slate-400">Lợi nhuận Ròng (Ước tính)</p><h3 id="stats-net-profit" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
                     <div class="bg-slate-800 p-6 rounded-xl shadow-lg"><p class="text-lg font-medium text-slate-400">Giá trị Tồn kho</p><h3 id="stats-inventory-value" class="text-3xl font-bold text-white mt-2">0 ₫</h3></div>
                 </div>
 
@@ -238,11 +243,16 @@
                                         <input type="date" id="report-end-date" class="bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
                                     </div>
                                 </div>
-                                <div class="flex gap-2 flex-wrap">
-                                    <button id="filter-today" class="bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 px-3 rounded-lg transition-colors">Hôm nay</button>
-                                    <button id="filter-this-month" class="bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 px-3 rounded-lg transition-colors">Tháng này</button>
-                                    <button id="filter-last-month" class="bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 px-3 rounded-lg transition-colors">Tháng trước</button>
+                                <div id="month-filter-container" class="flex gap-2 flex-wrap">
+                                    <!-- Nút lọc theo tháng sẽ được chèn vào đây -->
                                 </div>
+                                <button id="export-report-btn" class="bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-3 rounded-lg transition-colors flex items-center gap-2">
+                                    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Xuất Báo cáo
+                                </button>
+                            </div>
+                             <div class="bg-slate-700/50 p-4 rounded-lg mb-6 text-center">
+                                <span class="text-slate-400">Tổng lợi nhuận trong khoảng thời gian đã chọn:</span>
+                                <strong id="filtered-profit-display" class="text-2xl ml-2 text-green-400">0 ₫</strong>
                             </div>
                             <div class="bg-slate-700/50 p-4 rounded-lg mb-6">
                                 <canvas id="sales-chart"></canvas>
@@ -385,6 +395,25 @@
                 document.getElementById('report-start-date').value = dateToIso(startOfMonth);
             }
 
+            function updateStats() {
+                const filter = document.getElementById('stats-filter').value;
+                const now = new Date();
+                let filteredSales = sales;
+
+                if (filter !== 'all') {
+                    const [year, month] = filter.split('-').map(Number);
+                    const startDate = new Date(year, month - 1, 1);
+                    const endDate = new Date(year, month, 0);
+                    endDate.setHours(23, 59, 59, 999);
+                    filteredSales = sales.filter(s => {
+                        const saleDate = s.saleDate.toDate();
+                        return saleDate >= startDate && saleDate <= endDate;
+                    });
+                }
+                
+                renderStats(filteredSales, filter);
+            }
+
             function filterAndRenderReports() {
                 const startDateInput = document.getElementById('report-start-date').value;
                 const endDateInput = document.getElementById('report-end-date').value;
@@ -403,14 +432,21 @@
                 renderSalesDetails(filteredSales);
                 renderDailyProfit(filteredSales);
                 renderChart(filteredSales);
+
+                const totalProfit = filteredSales.reduce((sum, sale) => sum + sale.profit, 0);
+                const filteredProfitEl = document.getElementById('filtered-profit-display');
+                filteredProfitEl.textContent = formatCurrency(totalProfit);
+                filteredProfitEl.classList.toggle('text-red-400', totalProfit < 0);
+                filteredProfitEl.classList.toggle('text-green-400', totalProfit >= 0);
             }
 
             function renderAll() {
                 renderProductList();
                 renderProductSelects();
                 renderInventoryDetails();
-                filterAndRenderReports(); // Thay vì gọi trực tiếp, gọi hàm filter
-                renderStats();
+                filterAndRenderReports(); 
+                updateStatsFilterOptions();
+                updateStats();
                 updateSaleFormAvailability();
             }
             
@@ -576,11 +612,20 @@
                     });
             }
 
-            function renderStats() {
-                const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalRevenue, 0);
-                const grossProfit = sales.reduce((sum, sale) => sum + sale.profit, 0);
-                const estimatedNetProfit = grossProfit - (businessConfig.fixedCost || 0);
+            function renderStats(salesData, filter) {
+                const totalRevenue = salesData.reduce((sum, sale) => sum + sale.totalRevenue, 0);
+                const grossProfit = salesData.reduce((sum, sale) => sum + sale.profit, 0);
                 const totalInventoryValue = inventory.reduce((sum, item) => sum + (item.remainingQuantity * item.purchasePrice), 0);
+                
+                let estimatedNetProfit = grossProfit;
+                const netProfitLabel = document.getElementById('net-profit-label');
+                
+                if (filter !== 'all') {
+                    estimatedNetProfit -= (businessConfig.fixedCost || 0);
+                    netProfitLabel.textContent = 'Lợi nhuận Ròng (Tháng)';
+                } else {
+                    netProfitLabel.textContent = 'Lợi nhuận Ròng (Toàn TG)';
+                }
                 
                 const netProfitEl = document.getElementById('stats-net-profit');
                 if (netProfitEl) {
@@ -937,9 +982,15 @@
 
                 // Set default tab
                 const defaultTab = 'sales';
-                document.querySelector(`.tab-btn[data-tab="${defaultTab}"]`).classList.add('text-white', 'border-cyan-500');
-                document.querySelector(`.tab-btn[data-tab="${defaultTab}"]`).classList.remove('text-slate-400', 'border-transparent');
-                document.getElementById(`${defaultTab}-tab`).classList.remove('hidden');
+                const defaultBtn = document.querySelector(`.tab-btn[data-tab="${defaultTab}"]`);
+                if (defaultBtn) {
+                    defaultBtn.classList.add('text-white', 'border-cyan-500');
+                    defaultBtn.classList.remove('text-slate-400', 'border-transparent');
+                }
+                const defaultPane = document.getElementById(`${defaultTab}-tab`);
+                if (defaultPane) {
+                    defaultPane.classList.remove('hidden');
+                }
 
 
                 tabsContainer.addEventListener('click', (e) => {
@@ -947,6 +998,11 @@
                     if (!clickedBtn) return;
 
                     const tabId = clickedBtn.dataset.tab;
+
+                    // NEW: Reset dates when switching to relevant tabs
+                    if (tabId === 'sales' || tabId === 'inventory') {
+                        setDefaultDates();
+                    }
 
                     // Update buttons
                     tabBtns.forEach(btn => {
@@ -970,31 +1026,7 @@
             function initializeReportFilters() {
                 document.getElementById('report-start-date').addEventListener('change', filterAndRenderReports);
                 document.getElementById('report-end-date').addEventListener('change', filterAndRenderReports);
-                
-                document.getElementById('filter-today').addEventListener('click', () => {
-                    const today = dateToIso(new Date());
-                    document.getElementById('report-start-date').value = today;
-                    document.getElementById('report-end-date').value = today;
-                    filterAndRenderReports();
-                });
-
-                document.getElementById('filter-this-month').addEventListener('click', () => {
-                    const now = new Date();
-                    const startOfMonth = dateToIso(new Date(now.getFullYear(), now.getMonth(), 1));
-                    const endOfMonth = dateToIso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-                    document.getElementById('report-start-date').value = startOfMonth;
-                    document.getElementById('report-end-date').value = endOfMonth;
-                    filterAndRenderReports();
-                });
-
-                document.getElementById('filter-last-month').addEventListener('click', () => {
-                    const now = new Date();
-                    const startOfLastMonth = dateToIso(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-                    const endOfLastMonth = dateToIso(new Date(now.getFullYear(), now.getMonth(), 0));
-                    document.getElementById('report-start-date').value = startOfLastMonth;
-                    document.getElementById('report-end-date').value = endOfLastMonth;
-                    filterAndRenderReports();
-                });
+                document.getElementById('export-report-btn').addEventListener('click', exportReport);
             }
             
             function renderChart(salesData) {
@@ -1149,6 +1181,87 @@
             // Nút hủy sửa lô hàng
             document.getElementById('cancel-edit-inventory-btn').addEventListener('click', () => editInventoryModal.classList.add('hidden'));
 
+            function updateStatsFilterOptions() {
+                const statsFilter = document.getElementById('stats-filter');
+                const currentVal = statsFilter.value;
+                // Clear existing month options but keep "all"
+                statsFilter.innerHTML = '<option value="all">Thống kê Toàn thời gian</option>';
+
+                const salesMonths = [...new Set(sales.map(sale => {
+                    const date = sale.saleDate.toDate();
+                    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                }))].sort().reverse();
+
+                salesMonths.forEach(monthYear => {
+                    const [year, month] = monthYear.split('-');
+                    const option = document.createElement('option');
+                    option.value = monthYear;
+                    option.textContent = `Thống kê Tháng ${month}/${year}`;
+                    statsFilter.appendChild(option);
+                });
+                statsFilter.value = currentVal; // Restore selection if possible
+            }
+
+            function exportReport() {
+                const startDateInput = document.getElementById('report-start-date').value;
+                const endDateInput = document.getElementById('report-end-date').value;
+                 if (!startDateInput || !endDateInput) return;
+
+                const startDate = new Date(startDateInput);
+                startDate.setHours(0, 0, 0, 0);
+                const endDate = new Date(endDateInput);
+                endDate.setHours(23, 59, 59, 999);
+
+                const filteredSales = sales.filter(sale => {
+                    const saleDate = sale.saleDate.toDate();
+                    return saleDate >= startDate && saleDate <= endDate;
+                });
+                
+                const totalProfit = filteredSales.reduce((sum, sale) => sum + sale.profit, 0);
+
+                const reportWindow = window.open('', '_blank');
+                reportWindow.document.write('<html><head><title>Báo cáo Bán hàng</title>');
+                reportWindow.document.write('<style>body{font-family:sans-serif;margin:2em} table{width:100%;border-collapse:collapse} th,td{border:1px solid #ddd;padding:8px} th{background-color:#f2f2f2} h1,h2,h3{text-align:center}</style>');
+                reportWindow.document.write('</head><body>');
+                reportWindow.document.write(`<h1>Báo cáo Bán hàng</h1>`);
+                reportWindow.document.write(`<h2>Từ ${formatDate(Timestamp.fromDate(startDate))} đến ${formatDate(Timestamp.fromDate(endDate))}</h2>`);
+                reportWindow.document.write(`<h3>Tổng lợi nhuận trong kỳ: ${formatCurrency(totalProfit)}</h3>`);
+                
+                // Sales Details Table
+                reportWindow.document.write('<h4>Chi tiết bán hàng</h4>');
+                let salesTable = '<table><thead><tr><th>Ngày bán</th><th>Sản phẩm</th><th>SL</th><th>Giá vốn/SP</th><th>Giá bán/SP</th><th>Lợi nhuận</th></tr></thead><tbody>';
+                filteredSales.forEach(sale => {
+                    salesTable += `<tr>
+                        <td>${formatDate(sale.saleDate)}</td>
+                        <td>${sale.productName}</td>
+                        <td style="text-align:right">${sale.quantitySold}</td>
+                        <td style="text-align:right">${formatCurrency(sale.cogsPerItem)}</td>
+                        <td style="text-align:right">${formatCurrency(sale.sellingPrice)}</td>
+                        <td style="text-align:right">${formatCurrency(sale.profit)}</td>
+                    </tr>`;
+                });
+                salesTable += '</tbody></table>';
+                reportWindow.document.write(salesTable);
+
+                // Daily Profit Table
+                reportWindow.document.write('<h4>Lợi nhuận theo ngày</h4>');
+                const dailyProfits = filteredSales.reduce((acc, sale) => {
+                    const date = formatDate(sale.saleDate);
+                    if (!acc[date]) acc[date] = 0;
+                    acc[date] += sale.profit;
+                    return acc;
+                }, {});
+                let profitTable = '<table><thead><tr><th>Ngày</th><th>Tổng Lợi nhuận</th></tr></thead><tbody>';
+                 Object.entries(dailyProfits).sort((a,b) => new Date(b[0].split('/').reverse().join('-')) - new Date(a[0].split('/').reverse().join('-')))
+                    .forEach(([date, totalProfit]) => {
+                    profitTable += `<tr><td>${date}</td><td style="text-align:right">${formatCurrency(totalProfit)}</td></tr>`;
+                });
+                profitTable += '</tbody></table>';
+                reportWindow.document.write(profitTable);
+
+                reportWindow.document.write('</body></html>');
+                reportWindow.document.close();
+            }
 
             function initializeAppData(currentStoreId) {
                 storeId = currentStoreId;
@@ -1160,6 +1273,8 @@
                     initializeTabs();
                     initializeReportFilters();
                     
+                    document.getElementById('stats-filter').addEventListener('change', updateStats);
+
                     // Lắng nghe thay đổi của config
                     const configRef = doc(db, `stores/${storeId}/config/business`);
                     unsubscribeConfig = onSnapshot(configRef, (doc) => {
@@ -1168,7 +1283,7 @@
                             document.getElementById('setting-fixed-cost').value = businessConfig.fixedCost || '';
                             document.getElementById('setting-profit-margin').value = businessConfig.profitMargin || '';
                         }
-                        renderStats(); // Cập nhật lại stats khi config thay đổi
+                        updateStats();
                         calculateSuggestedPrice();
                     });
 
